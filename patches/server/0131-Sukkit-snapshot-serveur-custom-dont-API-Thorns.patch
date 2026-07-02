@@ -2421,10 +2421,10 @@ index 3e3a04808196e722fd1dcdae638bfcf45a79f4d9..3b9f22bd3145f1261b6f667c75ed4918
          getHandle().removeEffect(type.getId());
      }
 diff --git a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
-index 1705b5a51b37d45f3a6081f5e1f3688c436ce53d..1d8d60a7cccaa3a2ae86ce6934d63cada44d1e9e 100644
+index 1705b5a51b37d45f3a6081f5e1f3688c436ce53d..b5b2e49b1b70f6ffeb1490041b1b1dfe2f49d799 100644
 --- a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
 +++ b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
-@@ -346,6 +346,171 @@ public class CraftEventFactory {
+@@ -346,6 +346,181 @@ public class CraftEventFactory {
          return event;
      }
  
@@ -2522,6 +2522,15 @@ index 1705b5a51b37d45f3a6081f5e1f3688c436ce53d..1d8d60a7cccaa3a2ae86ce6934d63cad
 +            return PlayerReceiveDamageEvent.HitLocation.FEET;
 +        };
 +
++        // Per-piece armor points (inventory.armor order: 0=boots, 1=leggings, 2=chestplate, 3=helmet).
++        int[] armorPoints = new int[4];
++        net.minecraft.server.ItemStack[] armorPieces = victim.inventory.armor;
++        for (int i = 0; i < armorPoints.length && i < armorPieces.length; i++) {
++            if (armorPieces[i] != null && armorPieces[i].getItem() instanceof net.minecraft.server.ItemArmor) {
++                armorPoints[i] = ((net.minecraft.server.ItemArmor) armorPieces[i].getItem()).c;
++            }
++        }
++
 +        PlayerReceiveDamageEvent event = new PlayerReceiveDamageEvent(
 +                player,
 +                sourceEntity,
@@ -2533,7 +2542,8 @@ index 1705b5a51b37d45f3a6081f5e1f3688c436ce53d..1d8d60a7cccaa3a2ae86ce6934d63cad
 +                fromPlayer && playerSrc.isCritical(),
 +                fromPlayer ? playerSrc.getCriticalMultiplier()   : 1.5f,
 +                fromPlayer ? playerSrc.getKnockbackLevel()       : 0,
-+                hitLocSupplier
++                hitLocSupplier,
++                armorPoints[0], armorPoints[1], armorPoints[2], armorPoints[3]
 +        );
 +
 +        Bukkit.getPluginManager().callEvent(event);

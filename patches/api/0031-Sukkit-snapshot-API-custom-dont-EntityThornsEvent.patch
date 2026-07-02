@@ -260,10 +260,10 @@ index 0000000000000000000000000000000000000000..32d02efa877d832f1b6923f0d3cc331f
 +}
 diff --git a/src/main/java/org/bukkit/event/entity/PlayerReceiveDamageEvent.java b/src/main/java/org/bukkit/event/entity/PlayerReceiveDamageEvent.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..28a41aab7465e1b7364f45a2c598c8af921aa3bc
+index 0000000000000000000000000000000000000000..9bf0d502af9906da349472013b081dc99bf648e8
 --- /dev/null
 +++ b/src/main/java/org/bukkit/event/entity/PlayerReceiveDamageEvent.java
-@@ -0,0 +1,297 @@
+@@ -0,0 +1,327 @@
 +package org.bukkit.event.entity;
 +
 +import java.util.function.Supplier;
@@ -347,6 +347,12 @@ index 0000000000000000000000000000000000000000..28a41aab7465e1b7364f45a2c598c8af
 +    private float magicReduction;
 +    private float absorptionReduction;
 +
++    // ---- Per-piece armor points (read-only; their sum == the vanilla total armor value) ----
++    private final int bootsArmor;
++    private final int leggingsArmor;
++    private final int chestplateArmor;
++    private final int helmetArmor;
++
 +    // ---- Hit location (lazy) ----
 +    private final Supplier<HitLocation> hitLocationSupplier;
 +    private HitLocation hitLocation = null;
@@ -366,8 +372,16 @@ index 0000000000000000000000000000000000000000..28a41aab7465e1b7364f45a2c598c8af
 +                                    boolean attackerCritical,
 +                                    float attackerCriticalMultiplier,
 +                                    int attackerKnockbackLevel,
-+                                    Supplier<HitLocation> hitLocationSupplier) {
++                                    Supplier<HitLocation> hitLocationSupplier,
++                                    int bootsArmor,
++                                    int leggingsArmor,
++                                    int chestplateArmor,
++                                    int helmetArmor) {
 +        super(victim);
++        this.bootsArmor      = bootsArmor;
++        this.leggingsArmor   = leggingsArmor;
++        this.chestplateArmor = chestplateArmor;
++        this.helmetArmor     = helmetArmor;
 +        this.source                    = source;
 +        this.rawIncomingDamage         = rawIncomingDamage;
 +        this.hardHatReduction          = Math.max(0, hardHatReduction);
@@ -502,6 +516,22 @@ index 0000000000000000000000000000000000000000..28a41aab7465e1b7364f45a2c598c8af
 +    /** Damage absorbed by Absorption hearts. */
 +    public float getAbsorptionReduction() { return absorptionReduction; }
 +    public void setAbsorptionReduction(float v) { this.absorptionReduction = Math.max(0, v); }
++
++    // -------------------------------------------------------------------------
++    // Per-piece armor points (read-only)
++    // -------------------------------------------------------------------------
++
++    /**
++     * Armor points contributed by each worn piece. These sum to the vanilla total armor value,
++     * so a plugin can re-scale {@link #getArmorReduction()} to negate or weaken one piece
++     * (e.g. {@code setArmorReduction(reduction * (total - chestplate) / total)}).
++     */
++    public int getBootsArmor()      { return bootsArmor; }
++    public int getLeggingsArmor()   { return leggingsArmor; }
++    public int getChestplateArmor() { return chestplateArmor; }
++    public int getHelmetArmor()     { return helmetArmor; }
++    /** Sum of the per-piece armor points (equals the vanilla total armor value). */
++    public int getTotalArmorPoints() { return bootsArmor + leggingsArmor + chestplateArmor + helmetArmor; }
 +
 +    // -------------------------------------------------------------------------
 +    // Final damage
