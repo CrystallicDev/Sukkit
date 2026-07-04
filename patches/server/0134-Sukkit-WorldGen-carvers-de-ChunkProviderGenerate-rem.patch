@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nqtsu91 <55384628+Nqtsu91@users.noreply.github.com>
+Date: Sat, 4 Jul 2026 22:51:20 +0200
+Subject: [PATCH] Sukkit WorldGen: carvers de ChunkProviderGenerate
+ remplacables
+
+Champs u (caves) et z (canyons) passes de private a protected pour permettre
+a un provider custom (sous-classe) de substituer ses propres carvers
+(cavernes a bruit type 1.18+, rivieres custom). Aucun changement de
+comportement vanilla.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderGenerate.java b/src/main/java/net/minecraft/server/ChunkProviderGenerate.java
+index ad464d32d94763871027398ac27a71b9209267e5..63e44d2a3a9e37732719d363e99744de1bc675c1 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderGenerate.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderGenerate.java
+@@ -21,12 +21,12 @@ public class ChunkProviderGenerate implements IChunkProvider {
+     private CustomWorldSettingsFinal r;
+     private Block s;
+     private double[] t;
+-    private WorldGenBase u;
++    protected WorldGenBase u; // Sukkit - WorldGen: private -> protected (carvers remplacables par sous-classe)
+     private WorldGenStronghold v;
+     private WorldGenVillage w;
+     private WorldGenMineshaft x;
+     private WorldGenLargeFeature y;
+-    private WorldGenBase z;
++    protected WorldGenBase z; // Sukkit - WorldGen: private -> protected (carvers remplacables par sous-classe)
+     private WorldGenMonument A;
+     private BiomeBase[] B;
+     double[] d;
