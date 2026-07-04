@@ -1,0 +1,267 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nqtsu91 <55384628+Nqtsu91@users.noreply.github.com>
+Date: Sat, 4 Jul 2026 19:02:08 +0200
+Subject: [PATCH] Sukkit WorldGen: hook generateur NMS par monde
+
+Permet a un plugin de fournir un generateur NMS complet (IChunkProvider +
+WorldChunkManager) pour un monde donne, enregistre par nom via
+NmsWorldGenRegistry avant WorldCreator#createWorld(). Contourne les limites
+de l'API Bukkit ChunkGenerator 1.8 (pas de biomes custom, pas de controle
+des carvers/decoration). Hooks: WorldServer.k() et WorldProvider.b().
+Cout nul pour les mondes non enregistres (un lookup ConcurrentHashMap a la
+creation du monde uniquement).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+diff --git a/src/main/java/net/minecraft/server/WorldProvider.java b/src/main/java/net/minecraft/server/WorldProvider.java
+index f72c6fa9b3fc3cfd261494a2edaa6a7c735f79a4..2efb2677de91ceb7aa6ded0e87ecb87656c122f6 100644
+--- a/src/main/java/net/minecraft/server/WorldProvider.java
++++ b/src/main/java/net/minecraft/server/WorldProvider.java
+@@ -35,6 +35,16 @@ public abstract class WorldProvider {
+     }
+ 
+     protected void b() {
++        // Sukkit start - WorldGen: WorldChunkManager custom par monde
++        org.bukkit.craftbukkit.worldgen.NmsWorldGenerator sukkitGenerator = org.bukkit.craftbukkit.worldgen.NmsWorldGenRegistry.get(this.b.getWorldData().getName());
++        if (sukkitGenerator != null) {
++            WorldChunkManager sukkitManager = sukkitGenerator.createWorldChunkManager(this.b);
++            if (sukkitManager != null) {
++                this.c = sukkitManager;
++                return;
++            }
++        }
++        // Sukkit end
+         WorldType worldtype = this.b.getWorldData().getType();
+ 
+         if (worldtype == WorldType.FLAT) {
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index 1c9e429b4107daf0991fe0c61bd5377cf4c22c95..f21d33f6c6809f1d8c0a8b37054e71182888679c 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -939,6 +939,12 @@ public class WorldServer extends World implements IAsyncTaskHandler {
+         // CraftBukkit start
+         org.bukkit.craftbukkit.generator.InternalChunkGenerator gen;
+ 
++        // Sukkit start - WorldGen: générateur NMS custom par monde
++        org.bukkit.craftbukkit.worldgen.NmsWorldGenerator sukkitGenerator = org.bukkit.craftbukkit.worldgen.NmsWorldGenRegistry.get(this.worldData.getName());
++        if (sukkitGenerator != null) {
++            gen = new org.bukkit.craftbukkit.generator.SukkitChunkGenerator(sukkitGenerator.createChunkProvider(this));
++        } else
++        // Sukkit end
+         if (this.generator != null) {
+             gen = new org.bukkit.craftbukkit.generator.CustomChunkGenerator(this, this.getSeed(), this.generator);
+         } else if (this.worldProvider instanceof WorldProviderHell) {
+diff --git a/src/main/java/org/bukkit/craftbukkit/generator/SukkitChunkGenerator.java b/src/main/java/org/bukkit/craftbukkit/generator/SukkitChunkGenerator.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf20f8e69950767a55353dde551e2d649c5b6370
+--- /dev/null
++++ b/src/main/java/org/bukkit/craftbukkit/generator/SukkitChunkGenerator.java
+@@ -0,0 +1,110 @@
++package org.bukkit.craftbukkit.generator;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Random;
++
++import net.minecraft.server.*;
++
++import org.bukkit.craftbukkit.CraftWorld;
++import org.bukkit.generator.BlockPopulator;
++
++/**
++ * Sukkit - WorldGen.
++ * <p>
++ * Adaptateur {@link InternalChunkGenerator} déléguant à un {@link IChunkProvider}
++ * NMS arbitraire fourni par un plugin via
++ * {@link org.bukkit.craftbukkit.worldgen.NmsWorldGenRegistry}. Même rôle que
++ * {@link NormalChunkGenerator}, mais pour un provider custom.
++ */
++public class SukkitChunkGenerator extends InternalChunkGenerator {
++    private final IChunkProvider provider;
++
++    public SukkitChunkGenerator(IChunkProvider provider) {
++        this.provider = provider;
++    }
++
++    @Override
++    public byte[] generate(org.bukkit.World world, Random random, int x, int z) {
++        throw new UnsupportedOperationException("Not supported.");
++    }
++
++    @Override
++    public boolean canSpawn(org.bukkit.World world, int x, int z) {
++        return ((CraftWorld) world).getHandle().worldProvider.canSpawn(x, z);
++    }
++
++    @Override
++    public List<BlockPopulator> getDefaultPopulators(org.bukkit.World world) {
++        return new ArrayList<BlockPopulator>();
++    }
++
++    @Override
++    public boolean isChunkLoaded(int i, int i1) {
++        return provider.isChunkLoaded(i, i1);
++    }
++
++    @Override
++    public Chunk getOrCreateChunk(int i, int i1) {
++        return provider.getOrCreateChunk(i, i1);
++    }
++
++    @Override
++    public Chunk getChunkAt(BlockPosition blockPosition) {
++        return provider.getChunkAt(blockPosition);
++    }
++
++    @Override
++    public void getChunkAt(IChunkProvider icp, int i, int i1) {
++        provider.getChunkAt(icp, i, i1);
++    }
++
++    @Override
++    public boolean a(IChunkProvider iChunkProvider, Chunk chunk, int i, int i1) {
++        return provider.a(provider, chunk, i, i1);
++    }
++
++    @Override
++    public boolean saveChunks(boolean bln, IProgressUpdate ipu) {
++        return provider.saveChunks(bln, ipu);
++    }
++
++    @Override
++    public boolean unloadChunks() {
++        return provider.unloadChunks();
++    }
++
++    @Override
++    public boolean canSave() {
++        return provider.canSave();
++    }
++
++    @Override
++    public List<BiomeBase.BiomeMeta> getMobsFor(EnumCreatureType ect, BlockPosition position) {
++        return provider.getMobsFor(ect, position);
++    }
++
++    @Override
++    public BlockPosition findNearestMapFeature(World world, String string, BlockPosition position) {
++        return provider.findNearestMapFeature(world, string, position);
++    }
++
++    // n.m.s implementations always return 0. (The true implementation is in ChunkProviderServer)
++    @Override
++    public int getLoadedChunks() {
++        return 0;
++    }
++
++    @Override
++    public void recreateStructures(Chunk chunk, int i, int i1) {
++        provider.recreateStructures(chunk, i, i1);
++    }
++
++    @Override
++    public String getName() {
++        return provider.getName();
++    }
++
++    @Override
++    public void c() {}
++}
+diff --git a/src/main/java/org/bukkit/craftbukkit/worldgen/NmsWorldGenRegistry.java b/src/main/java/org/bukkit/craftbukkit/worldgen/NmsWorldGenRegistry.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..33acdd8ae3e9e8a845326f90082dd771463ed1d7
+--- /dev/null
++++ b/src/main/java/org/bukkit/craftbukkit/worldgen/NmsWorldGenRegistry.java
+@@ -0,0 +1,49 @@
++package org.bukkit.craftbukkit.worldgen;
++
++import java.util.Locale;
++import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
++
++/**
++ * Sukkit - WorldGen.
++ * <p>
++ * Registre des générateurs NMS custom, indexés par nom de monde (insensible à la
++ * casse). Thread-safe ; la résolution est faite sur le thread principal lors de la
++ * création du monde ({@code WorldServer.k()} et {@code WorldProvider.b()}).
++ */
++public final class NmsWorldGenRegistry {
++
++    private static final Map<String, NmsWorldGenerator> GENERATORS = new ConcurrentHashMap<>();
++
++    private NmsWorldGenRegistry() {}
++
++    /**
++     * Enregistre un générateur pour un monde. À appeler avant la création du monde.
++     * Écrase un enregistrement précédent pour le même nom.
++     */
++    public static void register(String worldName, NmsWorldGenerator generator) {
++        if (worldName == null) throw new IllegalArgumentException("worldName is null");
++        if (generator == null) throw new IllegalArgumentException("generator is null");
++        GENERATORS.put(key(worldName), generator);
++    }
++
++    /**
++     * Retire l'enregistrement d'un monde. Sans effet sur un monde déjà créé.
++     */
++    public static void unregister(String worldName) {
++        if (worldName != null) {
++            GENERATORS.remove(key(worldName));
++        }
++    }
++
++    /**
++     * @return le générateur enregistré pour ce monde, ou {@code null}
++     */
++    public static NmsWorldGenerator get(String worldName) {
++        return worldName == null ? null : GENERATORS.get(key(worldName));
++    }
++
++    private static String key(String name) {
++        return name.toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/java/org/bukkit/craftbukkit/worldgen/NmsWorldGenerator.java b/src/main/java/org/bukkit/craftbukkit/worldgen/NmsWorldGenerator.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..56456b1f17e5ac3f969523497695a802de76e1ac
+--- /dev/null
++++ b/src/main/java/org/bukkit/craftbukkit/worldgen/NmsWorldGenerator.java
+@@ -0,0 +1,37 @@
++package org.bukkit.craftbukkit.worldgen;
++
++import net.minecraft.server.IChunkProvider;
++import net.minecraft.server.World;
++import net.minecraft.server.WorldChunkManager;
++import net.minecraft.server.WorldServer;
++
++/**
++ * Sukkit - WorldGen.
++ * <p>
++ * Générateur NMS complet fourni par un plugin pour un monde donné, sans passer
++ * par l'API Bukkit {@link org.bukkit.generator.ChunkGenerator} (trop limitée :
++ * pas de biomes custom, pas de contrôle des carvers ni de la décoration).
++ * <p>
++ * Doit être enregistré via {@link NmsWorldGenRegistry#register(String, NmsWorldGenerator)}
++ * <b>avant</b> la création du monde ({@code WorldCreator#createWorld()}). Le monde
++ * principal étant chargé avant les plugins, seuls les mondes secondaires peuvent
++ * utiliser ce hook.
++ */
++public interface NmsWorldGenerator {
++
++    /**
++     * Crée le fournisseur de chunks (terrain, carvers, décoration) du monde.
++     * Appelé une seule fois, sur le thread principal, à l'initialisation du monde.
++     */
++    IChunkProvider createChunkProvider(WorldServer world);
++
++    /**
++     * Crée le gestionnaire de biomes (placement des biomes) du monde.
++     * Appelé une seule fois, avant {@link #createChunkProvider(WorldServer)}.
++     *
++     * @return le WorldChunkManager custom, ou {@code null} pour conserver le vanilla
++     */
++    default WorldChunkManager createWorldChunkManager(World world) {
++        return null;
++    }
++}
