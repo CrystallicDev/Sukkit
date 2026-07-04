@@ -1,0 +1,137 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nqtsu91 <55384628+Nqtsu91@users.noreply.github.com>
+Date: Sat, 4 Jul 2026 20:22:51 +0200
+Subject: [PATCH] Sukkit WorldGen: remap visuel des biomes custom vers le
+ client
+
+Table statique BiomeClientRemap (256 entrees, identite par defaut) appliquee
+au tableau de biomes lors de la construction des ChunkMap (point unique :
+PacketPlayOutMapChunk.a, utilise par MapChunk, MapChunkBulk et le cache
+cacheChunkMaps). Permet aux biomes custom serveur d'apparaitre au client
+comme un biome vanilla choisi. Cout nul si aucun mapping enregistre.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+diff --git a/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java b/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java
+index a0021fb96bac484f69e9d7c5c935c034d56358f9..d1efc129177a693ebd1ba3c4c8014d00e32cac86 100644
+--- a/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java
++++ b/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java
+@@ -99,7 +99,7 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+         }
+ 
+         if (flag) {
+-            a(chunk.getBiomeIndex(), packetplayoutmapchunk_chunkmap.a, j);
++            a(org.bukkit.craftbukkit.worldgen.BiomeClientRemap.remap(chunk.getBiomeIndex()), packetplayoutmapchunk_chunkmap.a, j); // Sukkit - WorldGen: remap visuel des biomes custom
+         }
+ 
+         return packetplayoutmapchunk_chunkmap;
+diff --git a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
+index caa7e842cbbe1b666d96a6d3b94fd49fe9bf50f3..17c9dc9d03694372ba5410e44f33eb1de59cd1ed 100644
+--- a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
++++ b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
+@@ -307,7 +307,16 @@ public class CraftBlock implements Block {
+             return null;
+         }
+ 
+-        return BIOME_MAPPING[base.id];
++        // Sukkit start - WorldGen: biome custom -> equivalent Bukkit de son biome client
++        Biome mapped = BIOME_MAPPING[base.id];
++        if (mapped == null) {
++            int clientId = org.bukkit.craftbukkit.worldgen.BiomeClientRemap.getClientId(base.id);
++            if (clientId != base.id) {
++                mapped = BIOME_MAPPING[clientId];
++            }
++        }
++        return mapped;
++        // Sukkit end
+     }
+ 
+     public static BiomeBase biomeToBiomeBase(Biome bio) {
+@@ -541,6 +550,12 @@ public class CraftBlock implements Block {
+         /* Helps avoid missed biomes when we upgrade bukkit to new code with new biomes */
+         for (int i = 0; i < BIOME_MAPPING.length; i++) {
+             if ((BiomeBase.getBiome(i) != null) && (BIOME_MAPPING[i] == null)) {
++                // Sukkit start - WorldGen: tolerer les biomes custom (plage 40-127), exposes au
++                // runtime comme l'equivalent Bukkit de leur biome client (voir biomeBaseToBiome)
++                if (i >= 40 && i <= 127) {
++                    continue;
++                }
++                // Sukkit end
+                 throw new IllegalArgumentException("Missing Biome mapping for BiomeBase[" + i + ", " + BiomeBase.getBiome(i) + "]");
+             }
+             if (BIOME_MAPPING[i] != null) {  /* Build reverse mapping for setBiome */
+diff --git a/src/main/java/org/bukkit/craftbukkit/worldgen/BiomeClientRemap.java b/src/main/java/org/bukkit/craftbukkit/worldgen/BiomeClientRemap.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..e7c6cd05973b5230dd09ca2d7d32ab09403dc7d8
+--- /dev/null
++++ b/src/main/java/org/bukkit/craftbukkit/worldgen/BiomeClientRemap.java
+@@ -0,0 +1,69 @@
++package org.bukkit.craftbukkit.worldgen;
++
++/**
++ * Sukkit - WorldGen.
++ * <p>
++ * Table de remap visuel des IDs de biomes envoyés au client dans les paquets
++ * chunk. Permet aux biomes custom (IDs hors vanilla) d'être affichés par le
++ * client comme un biome vanilla choisi (couleurs d'herbe/feuillage/eau,
++ * pluie/neige), sans toucher aux données serveur : le monde, la sauvegarde et
++ * toute la logique serveur voient le vrai ID custom.
++ * <p>
++ * Sans remap, un client 1.8.9 vanilla retombe sur Plains pour un ID inconnu
++ * (pas de crash, mais rendu incorrect).
++ * <p>
++ * Coût : nul tant qu'aucun mapping n'est enregistré (le tableau d'origine est
++ * renvoyé tel quel) ; sinon une copie remappée de 256 octets par construction
++ * de ChunkMap (mise en cache par chunk si cacheChunkMaps est actif).
++ * <p>
++ * Thread-safety : les mappings doivent être enregistrés à l'enable des plugins,
++ * avant l'envoi des premiers chunks.
++ */
++public final class BiomeClientRemap {
++
++    private static final byte[] TABLE = new byte[256];
++    private static volatile boolean active = false;
++
++    static {
++        for (int i = 0; i < 256; i++) {
++            TABLE[i] = (byte) i;
++        }
++    }
++
++    private BiomeClientRemap() {}
++
++    /**
++     * Fait apparaître {@code customId} comme {@code clientId} côté client.
++     */
++    public static void setMapping(int customId, int clientId) {
++        if (customId < 0 || customId > 255 || clientId < 0 || clientId > 255) {
++            throw new IllegalArgumentException("Biome id hors [0,255] : " + customId + " -> " + clientId);
++        }
++        TABLE[customId] = (byte) clientId;
++        active = true;
++    }
++
++    /**
++     * ID affiché au client pour cet ID serveur (identité si aucun mapping).
++     * Utilisé aussi par CraftBlock pour exposer aux plugins Bukkit un biome
++     * custom comme l'équivalent Bukkit de son biome client.
++     */
++    public static int getClientId(int biomeId) {
++        return TABLE[biomeId & 255] & 255;
++    }
++
++    /**
++     * Remappe un tableau de biomes de chunk (256 octets). Renvoie le tableau
++     * d'origine si aucun mapping n'est actif — ne JAMAIS modifier le retour.
++     */
++    public static byte[] remap(byte[] biomes) {
++        if (!active) {
++            return biomes;
++        }
++        byte[] out = new byte[biomes.length];
++        for (int i = 0; i < biomes.length; i++) {
++            out[i] = TABLE[biomes[i] & 255];
++        }
++        return out;
++    }
++}
