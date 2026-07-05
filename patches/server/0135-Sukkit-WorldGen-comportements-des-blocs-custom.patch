@@ -1,0 +1,215 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nqtsu91 <55384628+Nqtsu91@users.noreply.github.com>
+Date: Sun, 5 Jul 2026 14:38:04 +0200
+Subject: [PATCH] Sukkit WorldGen: comportements des blocs custom
+
+Registre CustomBlockBehaviors pour les etats valides reutilises comme blocs
+custom (rendu OptiFine) :
+- anti-pop de plante (BlockPlant.e) : une fleur-hote custom tient sur
+  n'importe quel support, s'empile, pend d'un plafond
+- drops configurables (Block.dropNaturally) : vanilla / rien / item
+  placeholder global
+- effet de casse (world event 2001) remappe vers un autre bloc (particules
+  et son de casse ; le son de pas reste client-side)
+Cout nul si aucun etat enregistre.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+diff --git a/src/main/java/net/minecraft/server/Block.java b/src/main/java/net/minecraft/server/Block.java
+index a784e04a09ffac4d09415353084aea3fd5451d9c..98b2f52371affef2e1e56afe275d8b3c5483373f 100644
+--- a/src/main/java/net/minecraft/server/Block.java
++++ b/src/main/java/net/minecraft/server/Block.java
+@@ -313,7 +313,24 @@ public class Block {
+ 
+     public void postBreak(World world, BlockPosition blockposition, IBlockData iblockdata) {}
+ 
+-    public void doPhysics(World world, BlockPosition blockposition, IBlockData iblockdata, Block block) {}
++    public void doPhysics(World world, BlockPosition blockposition, IBlockData iblockdata, Block block) {
++        // Sukkit start - blocs custom: attache requise pour les blocs NON-plante
++        // (ex. dripstone sur murets). Les plantes sont gérées par BlockPlant.e.
++        // Coût : un lookup de table par update quand des blocs custom existent.
++        int sukkitAttach = org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.getAttachMode(iblockdata);
++        if ((sukkitAttach == org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.ATTACH_CEILING
++                || sukkitAttach == org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.ATTACH_FLOOR)
++                && !(this instanceof BlockPlant) && !world.isClientSide) {
++            BlockPosition sukkitPos = sukkitAttach == org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.ATTACH_CEILING
++                    ? blockposition.up() : blockposition.down();
++            Block sukkitSupport = world.getType(sukkitPos).getBlock();
++            if (!sukkitSupport.getMaterial().isBuildable() && sukkitSupport != this) {
++                this.b(world, blockposition, iblockdata, 0);
++                world.setTypeAndData(blockposition, Blocks.AIR.getBlockData(), 3);
++            }
++        }
++        // Sukkit end
++    }
+ 
+     public int a(World world) {
+         return 10;
+@@ -346,6 +363,19 @@ public class Block {
+     }
+ 
+     public void dropNaturally(World world, BlockPosition blockposition, IBlockData iblockdata, float f, int i) {
++        // Sukkit start - blocs custom: drops configurables (rien / placeholder / vanilla)
++        int sukkitDrops = org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.getDropsMode(iblockdata);
++        if (sukkitDrops == org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.DROPS_NONE) {
++            return;
++        }
++        if (sukkitDrops == org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.DROPS_PLACEHOLDER) {
++            ItemStack sukkitPlaceholder = org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.getPlaceholderDrop();
++            if (!world.isClientSide && sukkitPlaceholder != null) {
++                a(world, blockposition, sukkitPlaceholder.cloneItemStack());
++            }
++            return;
++        }
++        // Sukkit end
+         if (!world.isClientSide) {
+             int j = this.getDropCount(i, world.random);
+ 
+diff --git a/src/main/java/net/minecraft/server/BlockPlant.java b/src/main/java/net/minecraft/server/BlockPlant.java
+index 558ab56e5f2e670dc17e8ffd39d8f09d6d2cd12e..4925cba63d5b3dfa326101dce124772b07096062 100644
+--- a/src/main/java/net/minecraft/server/BlockPlant.java
++++ b/src/main/java/net/minecraft/server/BlockPlant.java
+@@ -43,6 +43,21 @@ public class BlockPlant extends Block {
+     }
+ 
+     protected void e(World world, BlockPosition blockposition, IBlockData iblockdata) {
++        // Sukkit start - blocs custom: modes d'attache (sinon pop vanilla).
++        // Le support peut être un solide OU le même bloc (colonnes empilées :
++        // lianes, dripstone) — la casse d'un maillon fait tomber le reste en
++        // cascade via les block updates.
++        int sukkitAttach = org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.getAttachMode(iblockdata);
++        if (sukkitAttach == org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.ATTACH_ANY) return;
++        if (sukkitAttach == org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.ATTACH_CEILING) {
++            Block sukkitSupport = world.getType(blockposition.up()).getBlock();
++            if (sukkitSupport.getMaterial().isBuildable() || sukkitSupport == this) return;
++        }
++        if (sukkitAttach == org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.ATTACH_FLOOR) {
++            Block sukkitSupport = world.getType(blockposition.down()).getBlock();
++            if (sukkitSupport.getMaterial().isBuildable() || sukkitSupport == this) return;
++        }
++        // Sukkit end
+         if (!this.f(world, blockposition, iblockdata)) {
+             if (((WorldServer) world).hasPhysicsEvent) { // PandaSpigot - hasPhysicsEvent
+             // CraftBukkit Start
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 522c63e7f884a8b2202b111c81df9b54384703d5..01cae5b5d35523c648343010eaf5d9ea4aab0a96 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -3261,6 +3261,7 @@ public abstract class World implements IBlockAccess {
+     }
+ 
+     public void a(EntityHuman entityhuman, int i, BlockPosition blockposition, int j) {
++        if (i == 2001) { j = org.bukkit.craftbukkit.worldgen.CustomBlockBehaviors.remapBreakEffect(j); } // Sukkit - blocs custom: effet de casse remappé
+         try {
+             for (int k = 0; k < this.u.size(); ++k) {
+                 ((IWorldAccess) this.u.get(k)).a(entityhuman, i, blockposition, j);
+diff --git a/src/main/java/org/bukkit/craftbukkit/worldgen/CustomBlockBehaviors.java b/src/main/java/org/bukkit/craftbukkit/worldgen/CustomBlockBehaviors.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..86a9c19948c5ce6cbcd780dd52101f4a9cc8862c
+--- /dev/null
++++ b/src/main/java/org/bukkit/craftbukkit/worldgen/CustomBlockBehaviors.java
+@@ -0,0 +1,104 @@
++package org.bukkit.craftbukkit.worldgen;
++
++import net.minecraft.server.Block;
++import net.minecraft.server.IBlockData;
++import net.minecraft.server.ItemStack;
++
++import java.util.Arrays;
++
++/**
++ * Sukkit - WorldGen.
++ * <p>
++ * Comportements des "blocs custom" (états valides d'un bloc vanilla réutilisés
++ * avec un rendu OptiFine différent) : un plugin enregistre ses états
++ * (id, meta) pour :
++ * <ul>
++ * <li>les protéger du pop de plante (BlockPlant.e — une fleur-hôte custom peut
++ *     alors tenir sur n'importe quel support, s'empiler, pendre d'un plafond) ;</li>
++ * <li>contrôler les drops (défaut vanilla / rien / item placeholder global) ;</li>
++ * <li>remapper l'effet de casse (particules + son, world event 2001) vers un
++ *     autre bloc — le son de pas reste client-side, non remappable sans mod.</li>
++ * </ul>
++ * Coût nul quand aucun état n'est enregistré. Enregistrement à l'enable des
++ * plugins (main thread), lecture seule ensuite.
++ */
++public final class CustomBlockBehaviors {
++
++    public static final int DROPS_DEFAULT = 0;
++    public static final int DROPS_NONE = 1;
++    public static final int DROPS_PLACEHOLDER = 2;
++
++    /** Modes d'attache (pop de plante) : voir {@link #getAttachMode}. */
++    public static final int ATTACH_NONE = 0;    // comportement vanilla
++    public static final int ATTACH_ANY = 1;     // ne pop jamais
++    public static final int ATTACH_CEILING = 2; // exige un bloc solide au-dessus
++    public static final int ATTACH_FLOOR = 3;   // exige un bloc solide en-dessous
++
++    // index = id << 4 | meta (12 bits)
++    private static final byte[] DROPS = new byte[4096];
++    private static final byte[] ATTACH = new byte[4096];
++    private static final int[] BREAK_EFFECT = new int[4096];
++    private static volatile boolean active = false;
++    private static ItemStack placeholderDrop;
++
++    static {
++        Arrays.fill(BREAK_EFFECT, -1);
++    }
++
++    private CustomBlockBehaviors() {}
++
++    /**
++     * Enregistre un état custom.
++     *
++     * @param dropsMode  DROPS_DEFAULT / DROPS_NONE / DROPS_PLACEHOLDER
++     * @param attachMode ATTACH_ANY (jamais de pop) / ATTACH_CEILING (pop sauf
++     *                   solide au-dessus) / ATTACH_FLOOR / ATTACH_NONE (vanilla)
++     */
++    public static void register(int blockId, int meta, int dropsMode, int attachMode) {
++        int index = combined(blockId, meta);
++        DROPS[index] = (byte) dropsMode;
++        ATTACH[index] = (byte) attachMode;
++        active = true;
++    }
++
++    /** Effet de casse (particules + son) affiché comme celui d'un autre bloc. */
++    public static void setBreakEffect(int blockId, int meta, int effectBlockId, int effectMeta) {
++        BREAK_EFFECT[combined(blockId, meta)] = effectBlockId + (effectMeta << 12); // format event 2001
++        active = true;
++    }
++
++    /** Item droppé par les états en mode DROPS_PLACEHOLDER (null = rien). */
++    public static void setPlaceholderDrop(ItemStack itemStack) {
++        placeholderDrop = itemStack;
++    }
++
++    public static int getAttachMode(IBlockData state) {
++        return active ? ATTACH[combined(state)] : ATTACH_NONE;
++    }
++
++    public static int getDropsMode(IBlockData state) {
++        return active ? DROPS[combined(state)] : DROPS_DEFAULT;
++    }
++
++    public static ItemStack getPlaceholderDrop() {
++        return placeholderDrop;
++    }
++
++    /** Remap de la data du world event 2001 (id + meta&lt;&lt;12). Identité si non enregistré. */
++    public static int remapBreakEffect(int data) {
++        if (!active) {
++            return data;
++        }
++        int remapped = BREAK_EFFECT[((data & 4095) << 4 | (data >> 12) & 15) & 4095];
++        return remapped >= 0 ? remapped : data;
++    }
++
++    private static int combined(IBlockData state) {
++        Block block = state.getBlock();
++        return combined(Block.getId(block), block.toLegacyData(state));
++    }
++
++    private static int combined(int blockId, int meta) {
++        return (blockId << 4 | (meta & 15)) & 4095;
++    }
++}
