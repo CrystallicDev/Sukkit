@@ -1,6 +1,6 @@
 <div align="center">
-
-![Sukkit](https://i.ibb.co/YFtvhCpY/piz.png)
+<img src="https://i.ibb.co/YFtvhCpY/piz.png" width="140">
+  
 # Sukkit
 
 [![PandaSpigot](https://img.shields.io/badge/PandaSpigot-Fork-red)](https://github.com/hpfxd/PandaSpigot)
