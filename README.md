@@ -25,12 +25,12 @@ The Sukkit changes live as patches on top of PandaSpigot
 
 ### Combat & damage control
 
-- **`PlayerReceiveDamageEvent`** — a single authoritative hook over the whole
+- **`PlayerReceiveDamageEvent`**: a single authoritative hook over the whole
   1.8 damage pipeline. Plugins can inspect and rewrite every component of a
   hit (base damage, Strength/Resistance contributions, armor, enchantments,
   absorption, critical bonus) instead of guessing from the final number.
-- **`PlayerFatalHitEvent`** — fired when a hit would kill. Cancelling it allows true death control.
-- **`EntityThornsEvent`** — intercept and rescale Thorns returns.
+- **`PlayerFatalHitEvent`**: fired when a hit would kill. Cancelling it allows true death control.
+- **`EntityThornsEvent`**: intercept and rescale Thorns returns.
 - **`PlayerAttackDamageSource`** tracking and silent-damage support on
   `LivingEntity`, apply damage without knockback/i-frame side effects
 
@@ -46,7 +46,7 @@ The Sukkit changes live as patches on top of PandaSpigot
 
 A complete fake-player stack (`EntityFakePlayer`, `FakeNetworkManager`,
 `FakePlayerConnection`, `FakePlayerManager`) spawns player-like entities that
-exist purely server-side — no real connection — with their own event family:
+exist purely server-side, with no real connection and their own event family:
 `FakePlayerSpawnEvent`, `AttackEvent`, `DamagedEvent`, `DeathEvent`,
 `KillEvent`, `EatEvent`, `EffectEvent`. Clones fight, take damage and die
 without ever being confused with real players.
