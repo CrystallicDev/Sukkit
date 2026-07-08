@@ -64,8 +64,7 @@ Hooks designed for custom-dimension plugins (see *[Izanami](https://github.com/C
 ### Inherited from PandaSpigot (and backports)
 
 Modern-ish tooling on a 1.8.8 core: performance work throughout, bundled
-**Adventure** text API, modern explosion API, `PaperServerListPingEvent`, and
-more — see the upstream README in `pandaspigot/`.
+**Adventure** text API, modern explosion API, `PaperServerListPingEvent`, and more (see source).
 
 
 ## Building the fork
