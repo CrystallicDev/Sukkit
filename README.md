@@ -11,7 +11,7 @@
 
 **Sukkit** is a custom Minecraft **1.8.9 server fork** built for competitive,
 ability-based PvP game modes. It extends
-[PandaSpigot](https://github.com/hpfxd/PandaSpigot) with the low-level hooks such as : full control over the damage formula, potion lifecycle events,
+[PandaSpigot](https://github.com/hpfxd/PandaSpigot) with additional low-level hooks such as : full control over the damage formula, potion lifecycle events,
 server-side player clones, and pluggable world generation.
 
 ---
