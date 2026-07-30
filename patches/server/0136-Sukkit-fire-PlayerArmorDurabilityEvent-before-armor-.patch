@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nqtsu91 <55384628+Nqtsu91@users.noreply.github.com>
+Date: Wed, 22 Jul 2026 23:02:34 +0200
+Subject: [PATCH] Sukkit: fire PlayerArmorDurabilityEvent before armor wear
+
+
+diff --git a/src/main/java/net/minecraft/server/PlayerInventory.java b/src/main/java/net/minecraft/server/PlayerInventory.java
+index 0c1b79a78f272caba7a98dfdadeb9090e7b3fd76..95e9370d15b7ecb6d2a319a14538938cc18ccab7 100644
+--- a/src/main/java/net/minecraft/server/PlayerInventory.java
++++ b/src/main/java/net/minecraft/server/PlayerInventory.java
+@@ -10,6 +10,7 @@ import org.bukkit.craftbukkit.entity.CraftHumanEntity;
+ import org.bukkit.craftbukkit.inventory.CraftItemStack;
+ import org.bukkit.entity.HumanEntity;
+ import org.bukkit.event.player.PlayerArmorChangeEvent;
++import org.bukkit.event.player.PlayerArmorDurabilityEvent;
+ // CraftBukkit end
+ 
+ public class PlayerInventory implements IInventory {
+@@ -564,7 +565,25 @@ public class PlayerInventory implements IInventory {
+ 
+         for (int i = 0; i < this.armor.length; ++i) {
+             if (this.armor[i] != null && this.armor[i].getItem() instanceof ItemArmor) {
+-                this.armor[i].damage((int) f, this.player);
++                // Sukkit start - PlayerArmorDurabilityEvent: control point for armor
++                // wear, fired per piece BEFORE the loss (cancel = no wear, setDamage
++                // = custom wear; Unbreaking still rolls afterwards like vanilla).
++                int durabilityLoss = (int) f;
++                if (this.player instanceof EntityPlayer
++                        && ((EntityPlayer) this.player).getBukkitEntity() != null) {
++                    PlayerArmorDurabilityEvent durabilityEvent = new PlayerArmorDurabilityEvent(
++                            ((EntityPlayer) this.player).getBukkitEntity(),
++                            PlayerArmorChangeEvent.Slot.fromIndex(i),
++                            CraftItemStack.asBukkitCopy(this.armor[i]),
++                            durabilityLoss);
++                    Bukkit.getPluginManager().callEvent(durabilityEvent);
++                    if (durabilityEvent.isCancelled() || durabilityEvent.getDamage() <= 0) {
++                        continue;
++                    }
++                    durabilityLoss = durabilityEvent.getDamage();
++                }
++                this.armor[i].damage(durabilityLoss, this.player);
++                // Sukkit end
+                 if (this.armor[i].count == 0) {
+                     // Sukkit start - armor break event (informational, already committed)
+                     ItemStack broken = this.armor[i];

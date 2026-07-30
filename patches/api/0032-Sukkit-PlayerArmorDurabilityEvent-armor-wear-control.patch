@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nqtsu91 <55384628+Nqtsu91@users.noreply.github.com>
+Date: Wed, 22 Jul 2026 23:02:34 +0200
+Subject: [PATCH] Sukkit: PlayerArmorDurabilityEvent (armor wear control point)
+
+
+diff --git a/src/main/java/org/bukkit/event/player/PlayerArmorDurabilityEvent.java b/src/main/java/org/bukkit/event/player/PlayerArmorDurabilityEvent.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c339c7f041e51cf3239124455728ab678e7c5a3f
+--- /dev/null
++++ b/src/main/java/org/bukkit/event/player/PlayerArmorDurabilityEvent.java
+@@ -0,0 +1,88 @@
++package org.bukkit.event.player;
++
++import org.bukkit.entity.Player;
++import org.bukkit.event.Cancellable;
++import org.bukkit.event.HandlerList;
++import org.bukkit.inventory.ItemStack;
++
++/**
++ * Fired once per armor piece about to lose durability from an incoming hit,
++ * BEFORE the loss is applied — the control point for custom armor-wear
++ * mechanics (indestructible armor, accelerated wear, per-piece rules).
++ *
++ * <h3>Semantics</h3>
++ * <ul>
++ *   <li>{@link #getDamage()} is the durability loss vanilla is about to apply
++ *       to this piece (pre-Unbreaking: the Unbreaking enchant still rolls its
++ *       own per-point skip chance afterwards, exactly like vanilla).</li>
++ *   <li>{@link #setDamage(int)} replaces the loss; {@code 0} or
++ *       {@link #setCancelled(boolean) cancelling} means the piece takes no
++ *       wear from this hit.</li>
++ *   <li>If the resulting loss breaks the piece, the regular break path runs
++ *       ({@link PlayerArmorChangeEvent} with {@code ChangeReason.BREAK}).</li>
++ * </ul>
++ *
++ * <p>Fired up to four times per damaging hit (one per worn armor piece).
++ */
++public class PlayerArmorDurabilityEvent extends PlayerEvent implements Cancellable {
++
++    private static final HandlerList handlers = new HandlerList();
++
++    private final PlayerArmorChangeEvent.Slot slot;
++    private final ItemStack piece;
++    private int damage;
++    private boolean cancelled;
++
++    public PlayerArmorDurabilityEvent(Player player, PlayerArmorChangeEvent.Slot slot,
++                                      ItemStack piece, int damage) {
++        super(player);
++        this.slot = slot;
++        this.piece = piece;
++        this.damage = damage;
++    }
++
++    /** The armor slot about to take durability loss. */
++    public PlayerArmorChangeEvent.Slot getSlot() {
++        return slot;
++    }
++
++    /** Copy of the armor piece (inspection only — mutating it has no effect). */
++    public ItemStack getPiece() {
++        return piece;
++    }
++
++    /** Durability loss about to be applied (pre-Unbreaking). */
++    public int getDamage() {
++        return damage;
++    }
++
++    /**
++     * Replaces the durability loss. {@code 0} means no wear; larger values
++     * accelerate wear (and may break the piece through the regular break path).
++     *
++     * @throws IllegalArgumentException if {@code damage} is negative
++     */
++    public void setDamage(int damage) {
++        if (damage < 0) throw new IllegalArgumentException("Damage must be >= 0");
++        this.damage = damage;
++    }
++
++    @Override
++    public boolean isCancelled() {
++        return cancelled;
++    }
++
++    @Override
++    public void setCancelled(boolean cancel) {
++        this.cancelled = cancel;
++    }
++
++    @Override
++    public HandlerList getHandlers() {
++        return handlers;
++    }
++
++    public static HandlerList getHandlerList() {
++        return handlers;
++    }
++}
